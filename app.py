@@ -1,74 +1,71 @@
-from flask import Flask, request, jsonify, Response
+# app.py (para despliegue en Render)
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import cv2
 import numpy as np
+import joblib
+from deepface import DeepFace
 import os
 
-# Cargar el modelo entrenado
-reconocedor = cv2.face.LBPHFaceRecognizer_create()
-reconocedor.read("modelo_lbph.xml")
+# Config
+MODELO = "Facenet"
+DETECTOR = "mtcnn"
+UMBRAL_CONFIANZA = 50
 
-# Cargar nombres
-nombres = np.load("nombres.npy", allow_pickle=True).tolist()
+# Cargar modelo y etiquetas
+modelo = joblib.load("modelo_knn.pkl")
+nombres = np.load("nombres_knn.npy", allow_pickle=True)
 
-# Inicializar la app Flask
 app = Flask(__name__)
 CORS(app)
 
-# Ruta para reconocer desde imagen
-@app.route('/reconocer_imagen', methods=['POST'])
-def reconocer_imagen():
-    file = request.files['imagen']
-    npimg = np.frombuffer(file.read(), np.uint8)
-    imagen = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+@app.route("/reconocer_imagen", methods=["POST"])
+def reconocer():
+    if 'imagen' not in request.files:
+        return jsonify({"error": "No se proporcionó ninguna imagen."}), 400
 
-    gris = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    caras = face_cascade.detectMultiScale(gris, scaleFactor=1.3, minNeighbors=5)
+    archivo = request.files['imagen']
+    npimg = np.frombuffer(archivo.read(), np.uint8)
+    img_bgr = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
 
-    resultados = []
-    for (x, y, w, h) in caras:
-        rostro = gris[y:y + h, x:x + w]
-        rostro = cv2.resize(rostro, (200, 200))
-        id_, conf = reconocedor.predict(rostro)
-        nombre = nombres[id_] if conf < 90 else "Desconocido"
-        resultados.append({"nombre": nombre, "confianza": float(conf)})
+    if img_bgr is None:
+        return jsonify({"error": "No se pudo decodificar la imagen."}), 400
 
-    return jsonify(resultados)
+    # Guardar temporal para usar en DeepFace
+    temp_path = "temp_api.jpg"
+    cv2.imwrite(temp_path, img_bgr)
 
-# Generador de video para transmisión en tiempo real
-def generar_video():
-    cam = cv2.VideoCapture(0)
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    try:
+        emb = DeepFace.represent(
+            img_path=temp_path,
+            model_name=MODELO,
+            detector_backend=DETECTOR,
+            enforce_detection=False
+        )
 
-    while True:
-        ret, frame = cam.read()
-        if not ret:
-            break
-        gris = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        caras = face_cascade.detectMultiScale(gris, 1.3, 5)
-        for (x, y, w, h) in caras:
-            rostro = gris[y:y + h, x:x + w]
-            rostro = cv2.resize(rostro, (200, 200))
-            id_, conf = reconocedor.predict(rostro)
-            nombre = nombres[id_] if conf < 90 else "Desconocido"
-            cv2.putText(frame, f'{nombre} ({conf:.2f})', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        os.remove(temp_path)
 
-        _, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        if not emb or not isinstance(emb[0], dict):
+            raise ValueError("No se detectó rostro válido.")
 
-    cam.release()
+        emb_vec = emb[0]["embedding"]
+        pred = modelo.predict([emb_vec])[0]
 
-@app.route('/video')
-def video():
-    return Response(generar_video(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        dist, indices = modelo.kneighbors([emb_vec], n_neighbors=1, return_distance=True)
+        confianza = round(100 - dist[0][0], 2)
+        nombre = nombres[pred] if confianza >= UMBRAL_CONFIANZA else "Desconocido"
 
-@app.route('/')
+        return jsonify({
+            "nombre": nombre,
+            "confianza": confianza
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/")
 def index():
-    return "API de reconocimiento facial operativa."
+    return "API de reconocimiento facial KNN operativa"
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
