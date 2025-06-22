@@ -4,19 +4,14 @@ import cv2
 import numpy as np
 import joblib
 import os
-from deepface.basemodels import Facenet
-from deepface.commons import functions
+from deepface import DeepFace
 
 # Config
 MODELO = "Facenet"
 DETECTOR = "mtcnn"
 UMBRAL_CONFIANZA = 50
 
-# Precargar solo el modelo de embedding
-facenet_model = Facenet.loadModel()
-target_size = functions.find_target_size(model_name=MODELO)
-
-# Cargar modelo KNN y nombres
+# Cargar modelo y etiquetas
 modelo = joblib.load("modelo_knn.pkl")
 nombres = np.load("nombres_knn.npy", allow_pickle=True)
 
@@ -37,16 +32,16 @@ def reconocer():
         return jsonify({"error": "No se pudo decodificar la imagen."}), 400
 
     try:
-        # Guardar temporal para compatibilidad con DeepFace
-        temp_path = "temp_api.jpg"
+        # Guardar temporalmente
+        temp_path = "temp_render.jpg"
         cv2.imwrite(temp_path, img_bgr)
 
-        emb = functions.represent(
+        # Extraer embedding
+        emb = DeepFace.represent(
             img_path=temp_path,
-            model=facenet_model,
             model_name=MODELO,
-            enforce_detection=False,
-            detector_backend=DETECTOR
+            detector_backend=DETECTOR,
+            enforce_detection=False
         )
 
         os.remove(temp_path)
