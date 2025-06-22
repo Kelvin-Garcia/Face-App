@@ -12,6 +12,7 @@ nombres = np.load("nombres.npy", allow_pickle=True).tolist()
 
 # Inicializar la app Flask
 app = Flask(__name__)
+CORS(app)
 
 # Ruta para reconocer desde imagen
 @app.route('/reconocer_imagen', methods=['POST'])
