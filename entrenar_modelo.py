@@ -10,7 +10,7 @@ import joblib
 # Config
 RUTA_FOTOS = "fotos_aumentadas"
 MODELO = "Facenet"
-DETECTOR = "mtcnn"
+DETECTOR = "opencv"
 EMBEDDINGS = []
 ETIQUETAS = []
 
