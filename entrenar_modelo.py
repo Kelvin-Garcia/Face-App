@@ -8,7 +8,7 @@ from sklearn.preprocessing import LabelEncoder
 import joblib
 
 # Config
-RUTA_FOTOS = "fotos_aumentadas"
+RUTA_FOTOS = "fotos_normalizadas"
 MODELO = "Facenet"
 DETECTOR = "opencv"
 EMBEDDINGS = []
