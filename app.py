@@ -8,7 +8,7 @@ from deepface import DeepFace
 
 # Config
 MODELO = "Facenet"
-DETECTOR = "mtcnn"
+DETECTOR = "opencv"
 UMBRAL_CONFIANZA = 50
 
 # Cargar modelo y etiquetas
